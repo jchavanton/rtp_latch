@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding='ISO-8859-1'?>
+<!DOCTYPE book PUBLIC "-//OASIS//DTD DocBook XML V4.4//EN"
+"http://www.oasis-open.org/docbook/xml/4.4/docbookx.dtd" [
+
+<!-- Include general documentation entities -->
+<!ENTITY % docentities SYSTEM "../../../../doc/docbook/entities.xml">
+%docentities;
+
+]>
+
+<!-- Acc Module User's Guide -->
+
+<chapter>
+
+	<title>&adminguide;</title>
+
+	<section>
+	<title>Overview</title>
+	<para>
+		RTP_unlatch module is used to trigger port latching on RTP endpoints.
+		Sometimes RTP endpoint will do port latching even if the remote peer is not natted
+		we may end up with 2 such devices facing each other, in this case triggering port latching may be the only option.
+	</para>
+	</section>
+
+	<section>
+	  <title>Functions</title>
+	    <section>
+	      <title>
+		<function moreinfo="none">rtp_spoof(source_ip, source_port, destination_ip, destination_port)</function>
+	      </title>
+	      <para>
+	      </para>
+	      <para>
+	    <varname>value</varname> a integer return code.
+	  </para>
+	  </section>
+
+	  <example>
+	    <title>Example usage</title>
+	    <programlisting format="linespecific">
+	      ...
+			$avp(media_src_port) = 1111;
+			$avp(media_dst_port) = 4444;
+			$avp(media_src_ip) = "192.168.1.10";
+			$avp(media_dst_ip) = "192.168.1.20";
+			rtp_spoof("$avp(media_src_ip)", "$avp(media_src_port)", "$avp(media_dst_ip)", "$avp(media_dst_port)");
+	      ...
+	    </programlisting>
+	  </example>
+	</section>
+
+</chapter>

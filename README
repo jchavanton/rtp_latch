@@ -1,0 +1,59 @@
+RTP unlatch
+
+Julien Chavanton
+
+   <jchavanton@gmail.com>
+
+Julien Chavanton
+
+   flowroute.com
+   <jchavanton@gmail.com>
+
+Edited by
+
+Julien Chavanton
+
+   flowroute.com
+   <jchavanton@gmail.com>
+
+   Copyright © 2018 Flowroute.com
+     __________________________________________________________________
+
+   Table of Contents
+
+   1. Admin Guide
+
+        1.1. Overview
+        1.2. Functions
+
+              1.2.1. rtp_spoof(source_ip, source_port, destination_ip,
+                      destination_port)
+
+   List of Examples
+
+   1.1. Example usage
+
+Chapter 1. Admin Guide
+
+1.1. Overview
+
+   RTP_unlatch module is used to trigger port latching on RTP endpoints.
+   Sometimes RTP endpoint will do port latching even if the remote peer is
+   not natted we may end up with 2 such devices facing each other, in this
+   case triggering port latching may be the only option.
+
+1.2. Functions
+
+1.2.1.  rtp_spoof(source_ip, source_port, destination_ip, destination_port)
+
+   value a integer return code.
+
+   Example 1.1. Example usage
+              ...
+                        $avp(media_src_port) = 1111;
+                        $avp(media_dst_port) = 4444;
+                        $avp(media_src_ip) = "192.168.1.10";
+                        $avp(media_dst_ip) = "192.168.1.20";
+                        rtp_spoof("$avp(media_src_ip)", "$avp(media_src_port)",
+"$avp(media_dst_ip)", "$avp(media_dst_port)");
+              ...
