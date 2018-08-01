@@ -10,7 +10,7 @@
 
 <book xmlns:xi="http://www.w3.org/2001/XInclude">
 	<bookinfo>
-	<title>RTP unlatch</title>
+	<title>RTP latch</title>
 	<productname class="trade">&kamailio;</productname>
 	<authorgroup>
         <author>
@@ -38,5 +38,5 @@
 	</bookinfo>
 	<toc></toc>
 
-	<xi:include href="rtp_unlatch_admin.xml"/>
+	<xi:include href="rtp_latch_admin.xml"/>
 </book>

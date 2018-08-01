@@ -17,7 +17,7 @@
 	<section>
 	<title>Overview</title>
 	<para>
-		RTP_unlatch module is used to trigger port latching on RTP endpoints.
+		RTP_latch module is used to trigger port latching on RTP endpoints.
 		Sometimes RTP endpoint will do port latching even if the remote peer is not natted
 		we may end up with 2 such devices facing each other, in this case triggering port latching may be the only option.
 	</para>
