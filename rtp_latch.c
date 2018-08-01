@@ -99,6 +99,7 @@ static void destroy(void)
 {
 }
 
+
 /*
  *  Generic checksum calculation function
  */
@@ -174,19 +175,17 @@ static int rtp_spoof_f(struct sip_msg *msg, char *p_src_ip, char *p_src_port, ch
 	struct pseudo_header psh;
 	//Data part
 	data = datagram + sizeof(struct iphdr) + sizeof(struct udphdr);
-	//strcpy(data , "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
 	memcpy(data, RTP, sizeof(RTP));
 	//some address resolution
 	strcpy(source_ip , src_ip.s);
 	sin.sin_family = AF_INET;
 	sin.sin_port = htons(80);
 	sin.sin_addr.s_addr = inet_addr(dst_ip.s);
-	//Fill in the IP Header
+
 	iph->ihl = 5;
 	iph->version = 4;
 	iph->tos = 0;
-	iph->tot_len = sizeof (struct iphdr) + sizeof (struct udphdr) + (sizeof(RTP) * sizeof(unsigned char));
-	//iph->tot_len = sizeof (struct iphdr) + sizeof (struct udphdr) + strlen(data);
+	iph->tot_len = sizeof (struct iphdr) + sizeof (struct udphdr) + sizeof(RTP);
 	iph->id = htonl(54321); //Id of this packet
 	iph->frag_off = 0;
 	iph->ttl = 255;
@@ -196,29 +195,29 @@ static int rtp_spoof_f(struct sip_msg *msg, char *p_src_ip, char *p_src_port, ch
 	iph->daddr = sin.sin_addr.s_addr;
 	// IP checksum
 	iph->check = csum ((unsigned short *) datagram, iph->tot_len);
-	// Set UDP header
+
 	udph->source = htons (src_port);
 	udph->dest = htons (dst_port);
-	udph->len = htons(8 + strlen(data));
+	udph->len = htons(8 + sizeof(RTP));
 	udph->check = 0; // leave checksum 0 now, filled later by pseudo header
 	// Now the UDP checksum using the pseudo header
 	psh.src_address = inet_addr(src_ip.s);
 	psh.dst_address = sin.sin_addr.s_addr;
 	psh.placeholder = 0;
 	psh.protocol = IPPROTO_UDP;
-	psh.udp_length = htons(sizeof(struct udphdr) + strlen(data) );
+	psh.udp_length = htons(sizeof(struct udphdr) + sizeof(RTP) );
 	
-	int psize = sizeof(struct pseudo_header) + sizeof(struct udphdr) + strlen(data);
+	int psize = sizeof(struct pseudo_header) + sizeof(struct udphdr) + sizeof(RTP);
 	pseudogram = malloc(psize);
 	memcpy(pseudogram , (char*) &psh , sizeof (struct pseudo_header));
-	memcpy(pseudogram + sizeof(struct pseudo_header) , udph , sizeof(struct udphdr) + strlen(data));
+	memcpy(pseudogram + sizeof(struct pseudo_header) , udph , sizeof(struct udphdr) + sizeof(RTP));
 	udph->check = csum( (unsigned short*) pseudogram , psize);
 	
 	// Send the packet
 	if (sendto (s, datagram, iph->tot_len ,  0, (struct sockaddr *) &sin, sizeof (sin)) < 0) {
 		LM_ERR("sendto failed");
 	} else {
-		LM_INFO("packet sent, length[%d]\n" , iph->tot_len);
+		LM_DBG("packet sent -- length[%d]\n" , iph->tot_len);
 	}
 	return 1;
 }
