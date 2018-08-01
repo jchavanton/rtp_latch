@@ -1,5 +1,5 @@
 /*
- * RTP unlatch module
+ * RTP latch module
  *
  * Copyright (C) 2018 Julien Chavanton (Flowroute.com)
  *
@@ -25,7 +25,7 @@
 #include "../../core/sr_module.h"
 #include "../../core/mod_fix.h"
 #include "../../core/lvalue.h"
-#include "../../modules/rtp_unlatch/rtp_unlatch.h"
+#include "../../modules/rtp_latch/rtp_latch.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -53,7 +53,7 @@ static param_export_t params[] = {
 
 
 struct module_exports exports = {
-		"rtp_unlatch", DEFAULT_DLFLAGS, /* dlopen flags */
+		"rtp_latch", DEFAULT_DLFLAGS, /* dlopen flags */
 		cmds,						 /* exported functions */
 		params,					 /* exported params */
 		0,							 /* exported statistics */

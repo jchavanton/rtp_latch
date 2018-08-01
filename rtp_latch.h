@@ -1,5 +1,5 @@
 /*
- * RTP unlatch module
+ * RTP latch module
  *
  * Copyright (C) 2018 Julien Chavanton (Flowroute.com)
  *
@@ -21,8 +21,8 @@
  *
  */
 
-#ifndef _RTP_UNLATCH_MOD_H_
-#define _RTP_UNLATCH_MOD_H_
+#ifndef _RTP_LATCH_MOD_H_
+#define _RTP_LATCH_MOD_H_
 
 #include<stdio.h>
 #include<string.h>

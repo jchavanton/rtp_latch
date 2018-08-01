@@ -1,4 +1,4 @@
-docs = rtp_unlatch.xml
+docs = rtp_latch.xml
 
 docbook_dir = ../../../../doc/docbook
 include $(docbook_dir)/Makefile.module
