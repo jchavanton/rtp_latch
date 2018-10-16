@@ -162,6 +162,7 @@ static char *shm_strdup(str *src) {
 }
 
 static void spoof_info_list_add(spoof_info_t *si) {
+	lock_get(&vars->lock);
 	if(!vars->spoof_info_list) {
 		vars->spoof_info_list = si;
 		LM_DBG(": init spoof info list\n");
@@ -170,33 +171,45 @@ static void spoof_info_list_add(spoof_info_t *si) {
 		LM_DBG(": append spoof info\n");
 		clist_append(vars->spoof_info_list, si, next, prev);
 	}
+	lock_release(&vars->lock);
 }
 
-static void spoof_process_queue(void) {
+static int spoof_process_queue(void) {
 	spoof_info_t *si;
 	struct timeval now;
 	gettimeofday(&now, NULL);
 	int64_t now_ms = (now.tv_sec) * 1000 + (now.tv_usec) / 1000;
 
+	lock_get(&vars->lock);
 	clist_foreach(vars->spoof_info_list, si, next) {
 		int64_t due_ms = si->time_ms - now_ms;
-		LM_DBG("[%p<%p>%p]src[%.*s:%d]dst[%.*s:%d][%ld][%ld][%ldms]",
+		LM_DBG("[%p<%p>%p]src[%.*s:%d]dst[%.*s:%d][%ld][%ld][%ldms]\n",
 			 si->prev, si, si->next,
 			 si->src_ip.len, si->src_ip.s, si->src_port,
 			 si->dst_ip.len, si->dst_ip.s, si->dst_port,
 			 now_ms, si->time_ms, due_ms);
 		if (due_ms <= 0) {
-			LM_NOTICE(" send\n");
-			rtp_spoof_do(si);
+			LM_DBG("[%p<%p>%p]src[%.*s:%d]dst[%.*s:%d][%ld][%ld][%ldms] sending\n",
+			 si->prev, si, si->next,
+			 si->src_ip.len, si->src_ip.s, si->src_port,
+			 si->dst_ip.len, si->dst_ip.s, si->dst_port,
+			 now_ms, si->time_ms, due_ms);
 			spoof_info_t *tmp = si;
 			si = si->prev;
+			clist_rm(tmp, next, prev);
+			lock_release(&vars->lock);
+			rtp_spoof_do(tmp);
 			spoof_info_del(tmp);
+			return 1;
 		} else {
-			LM_NOTICE("[%ld <= %ld] wait\n", now_ms, si->time_ms);
-			return;
+			goto done;
 		}
 	}
-	return;
+	goto done;
+
+	done:
+		lock_release(&vars->lock);
+		return 0;
 }
 
 spoof_info_t* spoof_info_new(str *src_ip, int src_port, str *dst_ip, int dst_port) {
@@ -228,7 +241,6 @@ spoof_info_t* spoof_info_new(str *src_ip, int src_port, str *dst_ip, int dst_por
 
 
 void spoof_info_del(spoof_info_t* si) {
-	clist_rm(si, next, prev);
 	shm_free(si->src_ip.s);
 	shm_free(si->dst_ip.s);
 	shm_free(si);
@@ -238,7 +250,7 @@ void spoof_info_del(spoof_info_t* si) {
 void wait_latch (void) {
 	while(1) {
 		LM_DBG(":wait[%d]\n", (int)time(NULL));
-		spoof_process_queue();
+		while (spoof_process_queue());
 		usleep(1000);
 	}
 }
@@ -266,7 +278,7 @@ int rtp_spoof_f(struct sip_msg *msg, char *p_src_ip, char *p_src_port, char *p_d
 		return -1;
 	}
 	spoof_info_t* si = spoof_info_new(&src_ip, src_port, &dst_ip, dst_port);
-	LM_DBG("sending [%.*s:%d]>>[%.*s:%d]\n",
+	LM_DBG("queuing [%.*s:%d]>>[%.*s:%d]\n",
 						 si->src_ip.len, si->src_ip.s, si->src_port,
 						 si->dst_ip.len, si->dst_ip.s, si->dst_port);
 	spoof_info_list_add(si);

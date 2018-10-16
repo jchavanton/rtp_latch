@@ -54,6 +54,7 @@ typedef struct spoof_info {
 
 typedef struct shared_global_vars {
 	spoof_info_t *spoof_info_list;
+	gen_lock_t lock;
 } shared_global_vars_t;
 
 void wait_latch (void);
