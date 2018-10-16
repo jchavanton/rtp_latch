@@ -42,6 +42,23 @@ struct pseudo_header {
 	u_int16_t udp_length;
 };
 
+typedef struct spoof_info {
+	struct spoof_info* next;
+	struct spoof_info* prev;
+	str src_ip;
+	int src_port;
+	str dst_ip;
+	int dst_port;
+	int64_t time_ms;
+} spoof_info_t;
 
+typedef struct shared_global_vars {
+	spoof_info_t *spoof_info_list;
+} shared_global_vars_t;
 
+void wait_latch (void);
+void spoof_info_print(void);
+spoof_info_t* spoof_info_new(str *src_ip, int src_port, str *dst_ip, int dst_port);
+void spoof_info_del(spoof_info_t* si);
+int rtp_spoof_do(spoof_info_t* si);
 #endif

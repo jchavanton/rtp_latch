@@ -33,6 +33,7 @@
 
 MODULE_VERSION
 
+int latch_delay_ms = 0;
 static int mod_init(void);
 static void destroy(void);
 static int child_init(int rank);
@@ -48,22 +49,22 @@ static cmd_export_t cmds[] = {
 
 
 static param_export_t params[] = {
+		{"delay_ms", INT_PARAM, &latch_delay_ms},
 		{0, 0, 0}
 };
 
 
 struct module_exports exports = {
-		"rtp_latch", DEFAULT_DLFLAGS, /* dlopen flags */
-		cmds,						 /* exported functions */
-		params,					 /* exported params */
-		0,							 /* exported statistics */
-		0,							 /* exported MI functions */
-		0,							 /* exported pseudo-variables */
-		0,							 /* extra processes */
-		mod_init,				 /* initialization module */
-		0,							 /* response function */
-		destroy,					 /* destroy function */
-		child_init				 /* per-child init function */
+		"rtp_latch",			/* module name */
+		DEFAULT_DLFLAGS,		/* dlopen flags */
+		cmds,						/* exported functions */
+		params,					/* exported parameters */
+		0,							/* RPC method exports */
+		0,							/* exported pseudo-variables */
+		0,							/* response handling function */
+		mod_init,				/* initialization module */
+		child_init,				/* per-child init function */
+		destroy,					/* destroy function */
 };
 
 
@@ -80,14 +81,34 @@ static int fixup_rtp_spoof(void** param, int param_no) {
 		return -1;
 }
 
+
+static shared_global_vars_t *vars;
+
+#define PROC_COUNT 1
+
 static int mod_init(void)
 {
+	vars = shm_malloc(sizeof(shared_global_vars_t));
+	vars->spoof_info_list = (spoof_info_t*) shm_malloc(sizeof(spoof_info_t));
+	clist_init(vars->spoof_info_list, next, prev);
+	LM_ERR("\n");
+	register_procs(PROC_COUNT);
 	return 0;
 }
 
 
 static int child_init(int rank)
 {
+	if (rank==PROC_MAIN) {
+		int pid;
+		pid=fork_process(PROC_XWORKER, "RTP latcher", 1);
+		if (pid<0)
+			return -1; /* error */
+		if(pid==0){
+			wait_latch();
+			return 0;
+		}
+	}
 	if(rank == PROC_INIT || rank == PROC_MAIN || rank == PROC_TCP_MAIN)
 		return 0; /* do nothing for the main process */
 
@@ -129,7 +150,100 @@ static unsigned short csum(unsigned short *ptr,int nbytes) {
 const unsigned char RTP[12] = {0x80,0x27,0x31,0x33,0x73,0x13,0x37,0x76,0x08,0x60,0x02,0x00};
 
 
-static int rtp_spoof_f(struct sip_msg *msg, char *p_src_ip, char *p_src_port, char *p_dst_ip, char *p_dst_port)
+static char *shm_strdup(str *src) {
+		char *res;
+		if (!src || !src->s)
+			return NULL;
+		if (!(res = (char *) shm_malloc(src->len + 1)))
+			return NULL;
+		strncpy(res, src->s, src->len);
+			res[src->len] = 0;
+		return res;
+}
+
+static void spoof_info_list_add(spoof_info_t *si) {
+	if(!vars->spoof_info_list) {
+		vars->spoof_info_list = si;
+		LM_DBG(": init spoof info list\n");
+		clist_init(vars->spoof_info_list, next, prev);
+	} else {
+		LM_DBG(": append spoof info\n");
+		clist_append(vars->spoof_info_list, si, next, prev);
+	}
+}
+
+static void spoof_process_queue(void) {
+	spoof_info_t *si;
+	struct timeval now;
+	gettimeofday(&now, NULL);
+	int64_t now_ms = (now.tv_sec) * 1000 + (now.tv_usec) / 1000;
+
+	clist_foreach(vars->spoof_info_list, si, next) {
+		int64_t due_ms = si->time_ms - now_ms;
+		LM_DBG("[%p<%p>%p]src[%.*s:%d]dst[%.*s:%d][%ld][%ld][%ldms]",
+			 si->prev, si, si->next,
+			 si->src_ip.len, si->src_ip.s, si->src_port,
+			 si->dst_ip.len, si->dst_ip.s, si->dst_port,
+			 now_ms, si->time_ms, due_ms);
+		if (due_ms <= 0) {
+			LM_NOTICE(" send\n");
+			rtp_spoof_do(si);
+			spoof_info_t *tmp = si;
+			si = si->prev;
+			spoof_info_del(tmp);
+		} else {
+			LM_NOTICE("[%ld <= %ld] wait\n", now_ms, si->time_ms);
+			return;
+		}
+	}
+	return;
+}
+
+spoof_info_t* spoof_info_new(str *src_ip, int src_port, str *dst_ip, int dst_port) {
+	struct timeval now;
+	gettimeofday(&now, NULL);
+
+	spoof_info_t *si = (spoof_info_t*) shm_malloc(sizeof(spoof_info_t));
+	if (!si)
+			return si;
+	si->src_ip.s = shm_strdup(src_ip);
+	if (!si->src_ip.s) {
+		shm_free(si);
+		return NULL;
+	}
+	si->src_ip.len = src_ip->len;
+	si->src_port = src_port;
+	si->dst_ip.s = shm_strdup(dst_ip);
+	if (!si->src_ip.s) {
+		shm_free(si->src_ip.s);
+		shm_free(si);
+		return NULL;
+	}
+	si->dst_ip.len = dst_ip->len;
+	si->dst_port = dst_port;
+
+	si->time_ms = (now.tv_sec) * 1000 + (now.tv_usec) / 1000 + latch_delay_ms;
+	return si;
+}
+
+
+void spoof_info_del(spoof_info_t* si) {
+	clist_rm(si, next, prev);
+	shm_free(si->src_ip.s);
+	shm_free(si->dst_ip.s);
+	shm_free(si);
+}
+
+
+void wait_latch (void) {
+	while(1) {
+		LM_DBG(":wait[%d]\n", (int)time(NULL));
+		spoof_process_queue();
+		usleep(1000);
+	}
+}
+
+int rtp_spoof_f(struct sip_msg *msg, char *p_src_ip, char *p_src_port, char *p_dst_ip, char *p_dst_port)
 {
 	str src_ip = {NULL, 0};
 	str dst_ip = {NULL, 0};
@@ -151,9 +265,16 @@ static int rtp_spoof_f(struct sip_msg *msg, char *p_src_ip, char *p_src_port, ch
 		LM_ERR("cannot get the param dst_port\n");
 		return -1;
 	}
+	spoof_info_t* si = spoof_info_new(&src_ip, src_port, &dst_ip, dst_port);
+	LM_DBG("sending [%.*s:%d]>>[%.*s:%d]\n",
+						 si->src_ip.len, si->src_ip.s, si->src_port,
+						 si->dst_ip.len, si->dst_ip.s, si->dst_port);
+	spoof_info_list_add(si);
+	return 1;
+}
 
-	LM_ERR("sending [%.*s:%d]>>[%.*s:%d]\n", src_ip.len, src_ip.s, src_port, dst_ip.len, dst_ip.s, dst_port);
-
+int rtp_spoof_do(spoof_info_t* si)
+{
 	//Create a raw socket of type IPPROTO
 	int s = socket (AF_INET, SOCK_RAW, IPPROTO_RAW);
 
@@ -177,10 +298,10 @@ static int rtp_spoof_f(struct sip_msg *msg, char *p_src_ip, char *p_src_port, ch
 	data = datagram + sizeof(struct iphdr) + sizeof(struct udphdr);
 	memcpy(data, RTP, sizeof(RTP));
 	//some address resolution
-	strcpy(source_ip , src_ip.s);
+	strcpy(source_ip , si->src_ip.s);
 	sin.sin_family = AF_INET;
 	sin.sin_port = htons(80);
-	sin.sin_addr.s_addr = inet_addr(dst_ip.s);
+	sin.sin_addr.s_addr = inet_addr(si->dst_ip.s);
 
 	iph->ihl = 5;
 	iph->version = 4;
@@ -191,17 +312,17 @@ static int rtp_spoof_f(struct sip_msg *msg, char *p_src_ip, char *p_src_port, ch
 	iph->ttl = 255;
 	iph->protocol = IPPROTO_UDP;
 	iph->check = 0;  // Set to 0 before calculating checksum
-	iph->saddr = inet_addr(src_ip.s); // Spoof the source ip address
+	iph->saddr = inet_addr(si->src_ip.s); // Spoof the source ip address
 	iph->daddr = sin.sin_addr.s_addr;
 	// IP checksum
 	iph->check = csum ((unsigned short *) datagram, iph->tot_len);
 
-	udph->source = htons (src_port);
-	udph->dest = htons (dst_port);
+	udph->source = htons (si->src_port);
+	udph->dest = htons (si->dst_port);
 	udph->len = htons(8 + sizeof(RTP));
 	udph->check = 0; // leave checksum 0 now, filled later by pseudo header
 	// Now the UDP checksum using the pseudo header
-	psh.src_address = inet_addr(src_ip.s);
+	psh.src_address = inet_addr(si->src_ip.s);
 	psh.dst_address = sin.sin_addr.s_addr;
 	psh.placeholder = 0;
 	psh.protocol = IPPROTO_UDP;
